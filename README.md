@@ -1,2 +1,4 @@
 # zbt-rush-slides
-todo: update
+todo: 
+    - update readme
+    - add conda env

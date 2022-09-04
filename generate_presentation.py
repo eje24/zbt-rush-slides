@@ -113,7 +113,8 @@ def addSlide(primary, secondary, rushee, comments, photoURL, closers = "", class
 default_image_path = os.path.join(image_dir, 'default.jpg')
 
 def get_image_path(rushee):
-    rushee_photo_url = os.path.join(image_dir, rushee.rstrip().lower())
+    rushee_photo_url = os.path.join(image_dir, '_'.join(rushee.rstrip().lower().split()))
+    print(rushee, " ", rushee_photo_url)
     if os.path.exists(rushee_photo_url + '.jpg'):
       return rushee_photo_url + '.jpg'
     elif os.path.exists(rushee_photo_url + '.png'):
