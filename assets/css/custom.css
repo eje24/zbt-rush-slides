@@ -1,0 +1,68 @@
+#slide {
+
+}
+
+#name {
+    font-family:  "Goudy Bookletter 1911", sans-serif;
+    font-size: 20px;
+    
+}
+
+#name h1 {
+    color: #64b5f6;
+}
+
+#profile {
+    flex: 50%
+}
+
+img {
+    border-color: black; 
+    border-width: 10px;
+    height: 40%;
+}
+
+#info {
+    font-size: 25px;
+
+}
+
+#info table tr:first-child {
+    color: #bbdefb;
+}
+
+#about {
+    margin-left: 20px;
+    flex: 100%;
+}
+
+#about ul li {
+    font-size: 35px;
+}
+
+#about h3 {
+    font-size: 40px;
+    color: #bbdefb
+}
+
+table, tr, td {
+    color: white;
+    border-color: white;
+}
+
+.flex-container {
+    display: flex;
+    justify-content: center;
+}
+
+tr td:first-child {
+    color: #bbdefb;
+}
+
+tr td {
+    border: 0 !important;
+}
+
+tr {
+    border-bottom: solid 1px white !important;
+}
