@@ -1,2 +1,5 @@
 *.html
 *.xlsx
+*.ipynb
+rushee_images/
+.DS_Store

@@ -1,58 +1,75 @@
 import os
 import pandas as pd
-import re
-from datetime import datetime
+from typing import List, Dict, NamedTuple
 
 base_path = os.getcwd()
-rushee_data_path = os.path.join(base_path, 'rush_responses.xlsx')
-image_dir = os.path.join(base_path, 'rushee_images')
-presentation_path = os.path.join(base_path, 'presentation.html')
+rushee_data_path = os.path.join(base_path, "rush_responses.xlsx")
+image_dir = os.path.join(base_path, "rushee_images")
+default_image_path = os.path.join(image_dir, "default.jpg")
+presentation_path = os.path.join(base_path, "presentation_test.html")
 
-def get_rushee_info_dict(data_path):
-  contacts = []
-  data_df = pd.read_excel(data_path).fillna('').sort_values(by=['Rushee Name'])
-  contacts = list(dict(contact_row[1][1:]) for contact_row in data_df.iterrows())
-  rushees = dict()
-  for contact in contacts:
-    rushee_name = contact['Rushee Name']
-    rusher_name = contact['Your Name']
-    rusher_excitement = (rusher_name, contact['How excited are you about them?'])
-    comment = contact['Rushee Information']
-    if rushee_name not in rushees:
-      rushees[rushee_name] = {
-          'rusher excitement': [],
-          'comments': []
-      }
-    rushee_dict = rushees[rushee_name]
-    rushee_dict['rusher excitement'].append(rusher_excitement)
-    rushee_dict['primary'] = contact['Primary']
-    rushee_dict['secondary'] = contact['Secondary']
-    rushee_dict['bucket'] = contact['Bucket']
-    rushee_dict['cross rush'] = contact['Cross-Rush']
-    rushee_dict['closers'] = contact['Closers']
-    rushee_dict['year'] = contact['Year']
-    if comment:
-      rushees[rushee_name]['comments'].append(comment)
-  return rushees
 
-def addSlide(primary, secondary, rushee, comments, photoURL, closers = "", class_year = 2025, bucket = None, cross_rush = None):
-    """Returns an html markup of the rushee slide
-    """    
-    comments_string = ''
+class RusheeInfo(NamedTuple):
+    comments: List[str]
+    primary: str
+    bucket: str
+    closers: List[str]
+    status: str
+
+
+class RusheeInfoDict(Dict):
+    def __init__(self):
+        super().__init__()
+
+    def update(self, rush_response):
+        name = rush_response["Rushee Name"].lower().rstrip()
+        comment = rush_response["Rushee Information"]
+        primary = rush_response["Primary"]
+        bucket = rush_response["Bucket"]
+        closers = rush_response["Closers"]
+        status = rush_response["Status"]
+
+        if name not in self:
+            self[name] = RusheeInfo(
+                comments=[],
+                primary="",
+                bucket="",
+                closers="",
+                status="",
+            )
+
+        self[name].comments.append(comment)
+        self[name] = RusheeInfo(
+            comments=self[name].comments,
+            primary=primary if self[name].primary == "" else self[name].primary,
+            bucket=bucket if self[name].bucket == "" else self[name].bucket,
+            closers=closers if self[name].closers == "" else self[name].closers,
+            status=status if self[name].status == "" else self[name].status,
+        )
+
+    def generate(data_path):
+        rushee_info_dict = RusheeInfoDict()
+        data_df = pd.read_excel(data_path).fillna("")
+        updates = list(dict(contact_row[1][1:]) for contact_row in data_df.iterrows())
+        for update in updates:
+            rushee_info_dict.update(update)
+        return rushee_info_dict
+
+
+def addSlide(name, comments, primary, bucket, closers, status, photoURL):
+    """Returns an html markup of the rushee slide"""
+    comments_string = ""
     for comment in comments:
-      comments_string += "<li>" + comment + "</li>"
+        comments_string += "<li>" + comment + "</li>"
 
     if not bucket:
-      bucket = 'N/A'
+        bucket = "N/A"
 
-    if not cross_rush:
-      cross_rush = '???'
-        
-    return ("""
+    return """
               <section>
                 <div id='slide'>
                     <div id='name'>
-                        <h1>{rushee}</h1>
+                        <h1>{name}</h1>
                     </div>
                     <div class='flex-container'>
                         <div id='profile'>
@@ -62,24 +79,20 @@ def addSlide(primary, secondary, rushee, comments, photoURL, closers = "", class
                             <div id='info'>
                                 <table>
                                     <tr>
-                                        <td>Primary/Secondary</td>
-                                        <td>{primary}/{secondary}</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Closers</td>
-                                        <td>{closers}</td>
-                                    </tr>
-                                    <tr>
-                                      <td> Class Year </td>
-                                      <td> {class_year} </td>
+                                        <td>Primary</td>
+                                        <td>{primary}</td>
                                     </tr>
                                     <tr>
                                         <td>Bucket</td>
                                         <td>{bucket}</td>
                                     </tr>
                                     <tr>
-                                        <td> x-rush</td>
-                                        <td> {cross_rush} </td>
+                                        <td>Closers</td>
+                                        <td>{closers}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Status</td>
+                                        <td>{status}</td>
                                     </tr>
                                 </table>
                             </div>
@@ -98,34 +111,37 @@ def addSlide(primary, secondary, rushee, comments, photoURL, closers = "", class
                     </div>
                 </div>
             </section>
-        """.format(photoURL = photoURL,
-                    primary = primary,
-                    secondary = secondary,
-                    rushee = rushee,
-                    bucket = bucket,
-                    comments = comments_string,
-                    cross_rush = cross_rush,
-                    class_year = class_year,
-                    closers = closers
-                    )
+        """.format(
+        name=name,
+        photoURL=photoURL,
+        primary=primary,
+        bucket=bucket,
+        comments=comments_string,
+        status=status,
+        closers=closers,
     )
 
-default_image_path = os.path.join(image_dir, 'default.jpg')
+
+
 
 def get_image_path(rushee):
-    rushee_photo_url = os.path.join(image_dir, '_'.join(rushee.rstrip().lower().split()))
-    print(rushee, " ", rushee_photo_url)
-    if os.path.exists(rushee_photo_url + '.jpg'):
-      return rushee_photo_url + '.jpg'
-    elif os.path.exists(rushee_photo_url + '.png'):
-      return rushee_photo_url + '.png'
+    rushee_photo_url = os.path.join(
+        image_dir, "_".join(rushee.rstrip().lower().split())
+    )
+    if os.path.exists(rushee_photo_url + ".jpg"):
+        return rushee_photo_url + ".jpg"
+    elif os.path.exists(rushee_photo_url + ".jpeg"):
+        return rushee_photo_url + ".jpeg"
+    elif os.path.exists(rushee_photo_url + ".png"):
+        return rushee_photo_url + ".png"
     else:
-      return default_image_path
-  
+        return default_image_path
+
+
 def write_to_slides(rushee_info_dict, presentation_path):
-  print(f'Writing to: {presentation_path}')
-  with open(presentation_path, 'w', encoding="utf-8") as f:
-      f.write(r"""
+    with open(presentation_path, "w", encoding="utf-8") as f:
+        f.write(
+            r"""
           <html>
               <head>
                   <link rel="stylesheet" href="assets/css/reveal.css">
@@ -135,22 +151,25 @@ def write_to_slides(rushee_info_dict, presentation_path):
               <body>
                   <div class="reveal">
                       <div class="slides">
-      """)
-      for rushee_name, rushee_info in rushee_info_dict.items(): 
-          rushee_slide = addSlide(
-              primary = rushee_info['primary'], 
-              secondary = rushee_info['secondary'], 
-              rushee = rushee_name,   
-              comments = rushee_info['comments'], 
-              class_year = rushee_info['year'], 
-              bucket = rushee_info['bucket'], 
-              photoURL = get_image_path(rushee_name), 
-              closers = rushee_info['closers']
+      """
+        )
+        for rushee_name, rushee_info in rushee_info_dict.items():
+            if rushee_info.bucket == "Drop":
+                continue
+            rushee_slide = addSlide(
+                name=rushee_name,
+                comments=rushee_info.comments,
+                primary=rushee_info.primary,
+                bucket=rushee_info.bucket,
+                closers=rushee_info.closers,
+                status=rushee_info.status,
+                photoURL=get_image_path(rushee_name),
             )
-          # write body contents to file
-          f.write(rushee_slide)
-      # write footer to html file
-      f.write(r"""
+            # write body contents to file
+            f.write(rushee_slide)
+        # write footer to html file
+        f.write(
+            r"""
                       </div>
                   </div>
                   <script src="assets/js/reveal.js"></script>
@@ -166,11 +185,16 @@ def write_to_slides(rushee_info_dict, presentation_path):
                   </script>
               <body>
           </html>
-      """)
+      """
+        )
 
-def generate_presentation(data_path = rushee_data_path, presentation_path = presentation_path):
-  rushee_info_dict = get_rushee_info_dict(data_path = data_path)
-  write_to_slides(rushee_info_dict, presentation_path = presentation_path)
 
-if __name__ == '__main__':
+def generate_presentation(
+    data_path=rushee_data_path, presentation_path=presentation_path
+):
+    rushee_info_dict = RusheeInfoDict.generate(data_path)
+    write_to_slides(rushee_info_dict, presentation_path=presentation_path)
+
+
+if __name__ == "__main__":
     generate_presentation()
