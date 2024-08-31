@@ -1,59 +1,94 @@
 import os
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Dict, Tuple
+
 import pandas as pd
-from typing import List, Dict, NamedTuple
 
 base_path = os.getcwd()
 rushee_data_path = os.path.join(base_path, "rush_responses.xlsx")
 image_dir = os.path.join(base_path, "rushee_images")
 default_image_path = os.path.join(image_dir, "default.jpg")
-presentation_path = os.path.join(base_path, "presentation_test.html")
+presentation_path = os.path.join(base_path, "presentation.html")
 
 
-class RusheeInfo(NamedTuple):
-    comments: List[str]
+class Bucket(Enum):
+    NONE = ""
+    DROP = "Drop"
+    PULL = "Pull"
+    PASS = "Pass"
+
+    @classmethod
+    def max(cls, old_bucket: "Bucket", new_bucket: "Bucket") -> "Bucket":
+        return new_bucket if new_bucket.name > old_bucket.name else old_bucket
+
+    @classmethod
+    def valid(cls, bucket_name: str) -> bool:
+        return bucket_name in [b.value for b in cls]
+
+
+@dataclass(frozen=True)
+class RusheeInfo:
+    """
+    Information about a rushee
+    """
+
+    name: str
+    comments: Tuple[str, ...]
     primary: str
-    bucket: str
-    closers: List[str]
+    bucket: Bucket
+    closers: Tuple[str, ...]
     status: str
 
-
-class RusheeInfoDict(Dict):
-    def __init__(self):
-        super().__init__()
-
-    def update(self, rush_response):
-        name = rush_response["Rushee Name"].lower().rstrip()
-        comment = rush_response["Rushee Information"]
-        primary = rush_response["Primary"]
-        bucket = rush_response["Bucket"]
-        closers = rush_response["Closers"]
-        status = rush_response["Status"]
-
-        if name not in self:
-            self[name] = RusheeInfo(
-                comments=[],
-                primary="",
-                bucket="",
-                closers="",
-                status="",
-            )
-
-        self[name].comments.append(comment)
-        self[name] = RusheeInfo(
-            comments=self[name].comments,
-            primary=primary if self[name].primary == "" else self[name].primary,
-            bucket=bucket if self[name].bucket == "" else self[name].bucket,
-            closers=closers if self[name].closers == "" else self[name].closers,
-            status=status if self[name].status == "" else self[name].status,
+    @classmethod
+    def from_rush_response(cls, rush_response: Dict[str, Any]) -> "RusheeInfo":
+        comment = rush_response["Rushee Information"].strip()
+        return cls(
+            name=rush_response["Rushee Name"].lower().rstrip(),
+            comments=(comment,) if comment else tuple(),
+            primary=rush_response["Primary"],
+            bucket=(
+                Bucket(rush_response["Bucket"])
+                if Bucket.valid(rush_response["Bucket"])
+                else Bucket.NONE
+            ),
+            closers=rush_response["Closers"],
+            status=rush_response["Status"],
         )
 
-    def generate(data_path):
-        rushee_info_dict = RusheeInfoDict()
-        data_df = pd.read_excel(data_path).fillna("")
-        updates = list(dict(contact_row[1][1:]) for contact_row in data_df.iterrows())
-        for update in updates:
-            rushee_info_dict.update(update)
-        return rushee_info_dict
+    def merge(self, other: "RusheeInfo") -> "RusheeInfo":
+        return RusheeInfo(
+            name=self.name,
+            comments=self.comments + other.comments,
+            primary=self.primary or other.primary,
+            bucket=Bucket.max(self.bucket, other.bucket),
+            closers=self.closers or other.closers,
+            status=self.status or other.status,
+        )
+
+
+class AggregateRusheeInfo:
+    def __init__(self):
+        self.info: Dict[str, RusheeInfo] = {}
+
+    def update(self, response_info: RusheeInfo):
+        name = response_info.name
+        info = self.info
+        if name not in info:
+            info[name] = response_info
+        else:
+            info[name] = info[name].merge(response_info)
+
+    @classmethod
+    def parse_df(cls, rush_responses_df) -> "AggregateRusheeInfo":
+        aggregate_rushee_info = cls()
+        rush_responses = list(
+            dict(contact_row[1][1:]) for contact_row in rush_responses_df.iterrows()
+        )
+        for rush_response in rush_responses:
+            response_info = RusheeInfo.from_rush_response(rush_response)
+            aggregate_rushee_info.update(response_info)
+        return aggregate_rushee_info
 
 
 def addSlide(name, comments, primary, bucket, closers, status, photoURL):
@@ -122,8 +157,6 @@ def addSlide(name, comments, primary, bucket, closers, status, photoURL):
     )
 
 
-
-
 def get_image_path(rushee):
     rushee_photo_url = os.path.join(
         image_dir, "_".join(rushee.rstrip().lower().split())
@@ -138,7 +171,7 @@ def get_image_path(rushee):
         return default_image_path
 
 
-def write_to_slides(rushee_info_dict, presentation_path):
+def write_to_slides(info):
     with open(presentation_path, "w", encoding="utf-8") as f:
         f.write(
             r"""
@@ -153,16 +186,16 @@ def write_to_slides(rushee_info_dict, presentation_path):
                       <div class="slides">
       """
         )
-        for rushee_name, rushee_info in rushee_info_dict.items():
-            if rushee_info.bucket == "Drop":
+        for rushee_name, info in info.info.items():
+            if info.bucket == "Drop":
                 continue
             rushee_slide = addSlide(
                 name=rushee_name,
-                comments=rushee_info.comments,
-                primary=rushee_info.primary,
-                bucket=rushee_info.bucket,
-                closers=rushee_info.closers,
-                status=rushee_info.status,
+                comments=info.comments,
+                primary=info.primary,
+                bucket=info.bucket.name,
+                closers=info.closers,
+                status=info.status,
                 photoURL=get_image_path(rushee_name),
             )
             # write body contents to file
@@ -189,11 +222,10 @@ def write_to_slides(rushee_info_dict, presentation_path):
         )
 
 
-def generate_presentation(
-    data_path=rushee_data_path, presentation_path=presentation_path
-):
-    rushee_info_dict = RusheeInfoDict.generate(data_path)
-    write_to_slides(rushee_info_dict, presentation_path=presentation_path)
+def generate_presentation(data_path=rushee_data_path):
+    rush_responses_df = pd.read_excel(data_path).fillna("")
+    rushee_info = AggregateRusheeInfo.parse_df(rush_responses_df)
+    write_to_slides(rushee_info)
 
 
 if __name__ == "__main__":
